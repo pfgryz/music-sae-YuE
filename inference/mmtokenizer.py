@@ -31,43 +31,38 @@ class AbstractTokenizer(ABC):
         pass
 
     def detokenize(self, token_ids):
-        raise NotImplementedError('detokenizer is not implemented for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("detokenizer is not implemented for {} tokenizer".format(self.name))
 
     @property
     def cls(self):
-        raise NotImplementedError('CLS is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("CLS is not provided for {} tokenizer".format(self.name))
 
     @property
     def sep(self):
-        raise NotImplementedError('SEP is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("SEP is not provided for {} tokenizer".format(self.name))
 
     @property
     def pad(self):
-        raise NotImplementedError('PAD is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("PAD is not provided for {} tokenizer".format(self.name))
 
     @property
     def eod(self):
-        raise NotImplementedError('EOD is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("EOD is not provided for {} tokenizer".format(self.name))
 
     @property
     def mask(self):
-        raise NotImplementedError('MASK is not provided for {} '
-                                  'tokenizer'.format(self.name))
+        raise NotImplementedError("MASK is not provided for {} tokenizer".format(self.name))
 
 
 class _SentencePieceTokenizer(AbstractTokenizer):
     """SentencePieceTokenizer-Megatron wrapper"""
 
     def __init__(self, model_file, vocab_extra_ids=0):
-        name = 'SentencePieceTokenizer'
+        name = "SentencePieceTokenizer"
         super().__init__(name)
 
         import sentencepiece
+
         self.tokenizer = sentencepiece.SentencePieceProcessor(model_file=model_file)
         self._initalize(vocab_extra_ids)
 
@@ -95,20 +90,20 @@ class _SentencePieceTokenizer(AbstractTokenizer):
             self._special_tokens[t] = self._vocab[t]
             self._inv_special_tokens[self._vocab[t]] = t
 
-        _add_special_token('<CLS>')
-        self._cls_id = self._vocab['<CLS>']
-        _add_special_token('<SEP>')
-        self._sep_id = self._vocab['<SEP>']
-        _add_special_token('<EOD>')
-        self._eod_id = self._vocab['<EOD>']
-        _add_special_token('<MASK>')
-        self._mask_id = self._vocab['<MASK>']
+        _add_special_token("<CLS>")
+        self._cls_id = self._vocab["<CLS>"]
+        _add_special_token("<SEP>")
+        self._sep_id = self._vocab["<SEP>"]
+        _add_special_token("<EOD>")
+        self._eod_id = self._vocab["<EOD>"]
+        _add_special_token("<MASK>")
+        self._mask_id = self._vocab["<MASK>"]
 
         pad_id = self.tokenizer.pad_id()
         try:
             pad_token = self.tokenizer.id_to_piece(pad_id)
         except IndexError:
-            pad_token = '<PAD>'
+            pad_token = "<PAD>"
         _add_special_token(pad_token)
         self._pad_id = self._vocab[pad_token]
 
@@ -116,7 +111,7 @@ class _SentencePieceTokenizer(AbstractTokenizer):
         try:
             bos_token = self.tokenizer.id_to_piece(bos_id)
         except IndexError:
-            bos_token = '<BOS>'
+            bos_token = "<BOS>"
         _add_special_token(bos_token)
         self._bos_id = self._vocab[bos_token]
 
@@ -124,7 +119,7 @@ class _SentencePieceTokenizer(AbstractTokenizer):
         try:
             eos_token = self.tokenizer.id_to_piece(eos_id)
         except IndexError:
-            eos_token = '<EOS>'
+            eos_token = "<EOS>"
         _add_special_token(eos_token)
         self._eos_id = self._vocab[eos_token]
 
@@ -234,12 +229,12 @@ class _SentencePieceTokenizer(AbstractTokenizer):
     def additional_special_tokens_ids(self):
         return [self.vocab[k] for k in self._t5_tokens]
 
+
 class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
     """SentencePieceTokenizer-Megatron wrapper"""
 
     def __init__(self, model_file, vocab_extra_ids=0):
         super().__init__(model_file, vocab_extra_ids)
-
 
     def _initalize(self, vocab_extra_ids):
         self._populate_vocab()
@@ -256,44 +251,44 @@ class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
             self._special_tokens[t] = self._vocab[t]
             self._inv_special_tokens[self._vocab[t]] = t
 
-        _add_special_token('<CLS>')
-        self._cls_id = self._vocab['<CLS>']
-        _add_special_token('<SEP>')
-        self._sep_id = self._vocab['<SEP>']
-        _add_special_token('<EOD>')
-        self._eod_id = self._vocab['<EOD>']
-        _add_special_token('<MASK>')
-        self._mask_id = self._vocab['<MASK>']
+        _add_special_token("<CLS>")
+        self._cls_id = self._vocab["<CLS>"]
+        _add_special_token("<SEP>")
+        self._sep_id = self._vocab["<SEP>"]
+        _add_special_token("<EOD>")
+        self._eod_id = self._vocab["<EOD>"]
+        _add_special_token("<MASK>")
+        self._mask_id = self._vocab["<MASK>"]
 
-        _add_special_token('<SOA>')
-        self._soa_id = self._vocab['<SOA>']
-        _add_special_token('<EOA>')
-        self._eoa_id = self._vocab['<EOA>']
-        _add_special_token('<SOV>')
-        self._sov_id = self._vocab['<SOV>']
-        _add_special_token('<EOV>')
-        self._eov_id = self._vocab['<EOV>']
-        _add_special_token('<SOI>')
-        self._soi_id = self._vocab['<SOI>']
-        _add_special_token('<EOI>')
-        self._eoi_id = self._vocab['<EOI>']
-        _add_special_token('<s_local>')
-        self._s_local_id = self._vocab['<s_local>']
-        _add_special_token('<e_local>')
-        self._e_local_id = self._vocab['<e_local>']
-        _add_special_token('<s_global>')
-        self._s_global_id = self._vocab['<s_global>']
-        _add_special_token('<e_global>')
-        self._e_global_id = self._vocab['<e_global>']
-        _add_special_token('<stage_1>')
-        self._stage_1_id = self._vocab['<stage_1>']
-        _add_special_token('<stage_2>')
-        self._stage_2_id = self._vocab['<stage_2>']
+        _add_special_token("<SOA>")
+        self._soa_id = self._vocab["<SOA>"]
+        _add_special_token("<EOA>")
+        self._eoa_id = self._vocab["<EOA>"]
+        _add_special_token("<SOV>")
+        self._sov_id = self._vocab["<SOV>"]
+        _add_special_token("<EOV>")
+        self._eov_id = self._vocab["<EOV>"]
+        _add_special_token("<SOI>")
+        self._soi_id = self._vocab["<SOI>"]
+        _add_special_token("<EOI>")
+        self._eoi_id = self._vocab["<EOI>"]
+        _add_special_token("<s_local>")
+        self._s_local_id = self._vocab["<s_local>"]
+        _add_special_token("<e_local>")
+        self._e_local_id = self._vocab["<e_local>"]
+        _add_special_token("<s_global>")
+        self._s_global_id = self._vocab["<s_global>"]
+        _add_special_token("<e_global>")
+        self._e_global_id = self._vocab["<e_global>"]
+        _add_special_token("<stage_1>")
+        self._stage_1_id = self._vocab["<stage_1>"]
+        _add_special_token("<stage_2>")
+        self._stage_2_id = self._vocab["<stage_2>"]
         pad_id = self.tokenizer.pad_id()
         try:
             pad_token = self.tokenizer.id_to_piece(pad_id)
         except IndexError:
-            pad_token = '<PAD>'
+            pad_token = "<PAD>"
         _add_special_token(pad_token)
         self._pad_id = self._vocab[pad_token]
 
@@ -301,7 +296,7 @@ class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
         try:
             bos_token = self.tokenizer.id_to_piece(bos_id)
         except IndexError:
-            bos_token = '<BOS>'
+            bos_token = "<BOS>"
         _add_special_token(bos_token)
         self._bos_id = self._vocab[bos_token]
 
@@ -309,7 +304,7 @@ class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
         try:
             eos_token = self.tokenizer.id_to_piece(eos_id)
         except IndexError:
-            eos_token = '<EOS>'
+            eos_token = "<EOS>"
         _add_special_token(eos_token)
         self._eos_id = self._vocab[eos_token]
 
@@ -317,39 +312,39 @@ class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
             t = "<extra_id_{}>".format(i)
             _add_special_token(t)
             self._t5_tokens += [t]
-    
+
     @property
     def soa(self):
         return self._soa_id
-    
+
     @property
     def eoa(self):
         return self._eoa_id
-    
+
     @property
     def sov(self):
         return self._sov_id
-    
+
     @property
     def eov(self):
         return self._eov_id
-    
+
     @property
     def soi(self):
         return self._soi_id
-    
+
     @property
     def eoi(self):
         return self._eoi_id
-    
+
     @property
     def s_local(self):
         return self._s_local_id
-    
+
     @property
     def e_local(self):
         return self._e_local_id
-    
+
     @property
     def s_global(self):
         return self._s_global_id
@@ -357,7 +352,7 @@ class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
     @property
     def e_global(self):
         return self._e_global_id
-    
+
     @property
     def stage_1(self):
         return self._stage_1_id
