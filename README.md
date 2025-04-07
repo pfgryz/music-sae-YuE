@@ -25,14 +25,21 @@ YuE is a groundbreaking series of open-source foundation models designed for mus
 
 ## 🚀 Usage
 
-1. Clone the repository with submodules
+1. Install Git LFS
+```bash
+sudo apt update
+sudo apt install git-lfs
+git lfs install
+```
+2. Clone the repository with submodules
 ```bash
 git clone --recurse-submodules -j8 git@github.com:pfgryz/music-sae-YuE.git
 ```
-2. Install dependencies
+3. Install dependencies
 ```bash
 just
 ```
+
 
 ## 🐧 Linux/WSL Users Quickstart
 For a **quick start**, watch this **video tutorial** by Fahd: [Watch here](https://www.youtube.com/watch?v=RSMNH9GitbA).  
