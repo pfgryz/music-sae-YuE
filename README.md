@@ -23,7 +23,11 @@ YuE is a groundbreaking series of open-source foundation models designed for mus
 
 ---
 
-## 🚀 Usage
+## 📦 | Requirements
+- uv
+- just
+
+## 🚀 | Usage
 
 1. Install Git LFS
 ```bash
@@ -36,6 +40,21 @@ git lfs install
 git clone --recurse-submodules -j8 git@github.com:pfgryz/music-sae-YuE.git
 ```
 3. Install dependencies
+```bash
+just
+```
+
+### 🧰 | Manual Setup (no `uv` and `just`) 
+1. Create virtual environment
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+2. Install `uv` and `just`
+```bash
+pip install uv rust-just
+```
+3. Install dependencies (with local `just` and `uv`)
 ```bash
 just
 ```
