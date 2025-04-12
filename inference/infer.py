@@ -16,13 +16,14 @@ import torchaudio
 from torchaudio.transforms import Resample
 import soundfile as sf
 from einops import rearrange
-from transformers import AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList
+from transformers import AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList  # noqa: F401
 from omegaconf import OmegaConf
 from codecmanipulator import CodecManipulator
 from mmtokenizer import _MMSentencePieceTokenizer
 from vocoder import build_codec_model, process_audio
 from post_process_audio import replace_low_freq_with_energy_matched
 
+from models.soundstream_hubert_new import SoundStream  # noqa: F401
 
 parser = argparse.ArgumentParser()
 # Model Configuration:
@@ -183,7 +184,7 @@ mmtokenizer = _MMSentencePieceTokenizer("./mm_tokenizer_v0.2_hf/tokenizer.model"
 model = AutoModelForCausalLM.from_pretrained(
     stage1_model,
     torch_dtype=torch.bfloat16,
-    attn_implementation="flash_attention_2",  # To enable flashattn, you have to install flash-attn
+    # attn_implementation="flash_attention_2",  # To enable flashattn, you have to install flash-attn
     # device_map="auto",
 )
 # to device, if gpu is available
@@ -399,7 +400,7 @@ print("Stage 2 inference...")
 model_stage2 = AutoModelForCausalLM.from_pretrained(
     stage2_model,
     torch_dtype=torch.bfloat16,
-    attn_implementation="flash_attention_2",
+    # attn_implementation="flash_attention_2",
     # device_map="auto",
 )
 model_stage2.to(device)
