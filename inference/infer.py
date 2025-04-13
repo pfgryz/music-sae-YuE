@@ -3,8 +3,6 @@ import sys
 
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xcodec_mini_infer"))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xcodec_mini_infer", "descriptaudiocodec"))
-import re
-import random
 import uuid
 import copy
 from tqdm import tqdm
@@ -13,7 +11,6 @@ import argparse
 import numpy as np
 import torch
 import torchaudio
-from torchaudio.transforms import Resample
 import soundfile as sf
 from einops import rearrange
 from transformers import AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList  # noqa: F401
@@ -25,6 +22,9 @@ from post_process_audio import replace_low_freq_with_energy_matched
 
 from models.soundstream_hubert_new import SoundStream  # noqa: F401
 
+
+from common import initialize_seed
+from stage_one_utils import split_lyrics, BlockTokenRangeProcessor
 
 # region Configuration
 
@@ -71,57 +71,10 @@ parser.add_argument(
     required=True,
     help="The file path to a text file containing the lyrics for the music generation. These lyrics will be processed and split into structured segments to guide the generation process.",
 )
-parser.add_argument(
-    "--use_audio_prompt",
-    action="store_true",
-    help="If set, the model will use an audio file as a prompt during generation. The audio file should be specified using --audio_prompt_path.",
-)
-parser.add_argument(
-    "--audio_prompt_path",
-    type=str,
-    default="",
-    help="The file path to an audio file to use as a reference prompt when --use_audio_prompt is enabled.",
-)
-parser.add_argument(
-    "--prompt_start_time",
-    type=float,
-    default=0.0,
-    help="The start time in seconds to extract the audio prompt from the given audio file.",
-)
-parser.add_argument(
-    "--prompt_end_time",
-    type=float,
-    default=30.0,
-    help="The end time in seconds to extract the audio prompt from the given audio file.",
-)
-parser.add_argument(
-    "--use_dual_tracks_prompt",
-    action="store_true",
-    help="If set, the model will use dual tracks as a prompt during generation. The vocal and instrumental files should be specified using --vocal_track_prompt_path and --instrumental_track_prompt_path.",
-)
-parser.add_argument(
-    "--vocal_track_prompt_path",
-    type=str,
-    default="",
-    help="The file path to a vocal track file to use as a reference prompt when --use_dual_tracks_prompt is enabled.",
-)
-parser.add_argument(
-    "--instrumental_track_prompt_path",
-    type=str,
-    default="",
-    help="The file path to an instrumental track file to use as a reference prompt when --use_dual_tracks_prompt is enabled.",
-)
+
 # Output
 parser.add_argument(
     "--output_dir", type=str, default="./output", help="The directory where generated outputs will be saved."
-)
-parser.add_argument(
-    "--keep_intermediate", action="store_true", help="If set, intermediate outputs will be saved during processing."
-)
-parser.add_argument(
-    "--disable_offload_model",
-    action="store_true",
-    help="If set, the model will not be offloaded from the GPU to CPU after Stage 1 inference.",
 )
 parser.add_argument("--cuda_idx", type=int, default=0)
 parser.add_argument("--seed", type=int, default=42, help="An integer value to reproduce generation.")
@@ -156,14 +109,6 @@ parser.add_argument("-r", "--rescale", action="store_true", help="Rescale output
 # region Configuration validation
 
 args = parser.parse_args()
-if args.use_audio_prompt and not args.audio_prompt_path:
-    raise FileNotFoundError(
-        "Please offer audio prompt filepath using '--audio_prompt_path', when you enable 'use_audio_prompt'!"
-    )
-if args.use_dual_tracks_prompt and not args.vocal_track_prompt_path and not args.instrumental_track_prompt_path:
-    raise FileNotFoundError(
-        "Please offer dual tracks prompt filepath using '--vocal_track_prompt_path' and '--inst_decoder_path', when you enable '--use_dual_tracks_prompt'!"
-    )
 
 # endregion
 
@@ -180,17 +125,7 @@ os.makedirs(stage2_output_dir, exist_ok=True)
 
 # endregion
 
-
-def seed_everything(seed=42):
-    random.seed(seed)
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-
-
-seed_everything(args.seed)
+initialize_seed(args.seed)
 # load tokenizer and model
 device = torch.device(f"cuda:{cuda_idx}" if torch.cuda.is_available() else "cpu")
 
@@ -218,48 +153,6 @@ parameter_dict = torch.load(args.resume_path, map_location="cpu", weights_only=F
 codec_model.load_state_dict(parameter_dict["codec_model"])
 codec_model.to(device)
 codec_model.eval()
-
-# endregion
-
-# region Stage One - Utils
-
-
-class BlockTokenRangeProcessor(LogitsProcessor):
-    def __init__(self, start_id, end_id):
-        self.blocked_token_ids = list(range(start_id, end_id))
-
-    def __call__(self, input_ids, scores):
-        scores[:, self.blocked_token_ids] = -float("inf")
-        return scores
-
-
-def load_audio_mono(filepath, sampling_rate=16000):
-    audio, sr = torchaudio.load(filepath)
-    # Convert to mono
-    audio = torch.mean(audio, dim=0, keepdim=True)
-    # Resample if needed
-    if sr != sampling_rate:
-        resampler = Resample(orig_freq=sr, new_freq=sampling_rate)
-        audio = resampler(audio)
-    return audio
-
-
-def encode_audio(codec_model, audio_prompt, device, target_bw=0.5):
-    if len(audio_prompt.shape) < 3:
-        audio_prompt.unsqueeze_(0)
-    with torch.no_grad():
-        raw_codes = codec_model.encode(audio_prompt.to(device), target_bw=target_bw)
-    raw_codes = raw_codes.transpose(0, 1)
-    raw_codes = raw_codes.cpu().numpy().astype(np.int16)
-    return raw_codes
-
-
-def split_lyrics(lyrics):
-    pattern = r"\[(\w+)\](.*?)(?=\[|\Z)"
-    segments = re.findall(pattern, lyrics, re.DOTALL)
-    structured_lyrics = [f"[{seg[0]}]\n{seg[1].strip()}\n\n" for seg in segments]
-    return structured_lyrics
-
 
 # endregion
 
@@ -292,6 +185,8 @@ repetition_penalty = args.repetition_penalty
 start_of_segment = mmtokenizer.tokenize("[start_of_segment]")
 end_of_segment = mmtokenizer.tokenize("[end_of_segment]")
 raw_output = None
+
+min_new_tokens = max_new_tokens
 # Format text prompt
 run_n_segments = min(args.run_n_segments + 1, len(lyrics))
 for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference...")):
@@ -303,36 +198,7 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
     if i == 0:
         continue
     if i == 1:
-        if args.use_dual_tracks_prompt or args.use_audio_prompt:
-            if args.use_dual_tracks_prompt:
-                vocals_ids = load_audio_mono(args.vocal_track_prompt_path)
-                instrumental_ids = load_audio_mono(args.instrumental_track_prompt_path)
-                vocals_ids = encode_audio(codec_model, vocals_ids, device, target_bw=0.5)
-                instrumental_ids = encode_audio(codec_model, instrumental_ids, device, target_bw=0.5)
-                vocals_ids = codectool.npy2ids(vocals_ids[0])
-                instrumental_ids = codectool.npy2ids(instrumental_ids[0])
-                ids_segment_interleaved = rearrange([np.array(vocals_ids), np.array(instrumental_ids)], "b n -> (n b)")
-                audio_prompt_codec = ids_segment_interleaved[
-                    int(args.prompt_start_time * 50 * 2) : int(args.prompt_end_time * 50 * 2)
-                ]
-                audio_prompt_codec = audio_prompt_codec.tolist()
-            elif args.use_audio_prompt:
-                audio_prompt = load_audio_mono(args.audio_prompt_path)
-                raw_codes = encode_audio(codec_model, audio_prompt, device, target_bw=0.5)
-                # Format audio prompt
-                code_ids = codectool.npy2ids(raw_codes[0])
-                audio_prompt_codec = code_ids[
-                    int(args.prompt_start_time * 50) : int(args.prompt_end_time * 50)
-                ]  # 50 is tps of xcodec
-            audio_prompt_codec_ids = [mmtokenizer.soa] + codectool.sep_ids + audio_prompt_codec + [mmtokenizer.eoa]
-            sentence_ids = (
-                mmtokenizer.tokenize("[start_of_reference]")
-                + audio_prompt_codec_ids
-                + mmtokenizer.tokenize("[end_of_reference]")
-            )
-            head_id = mmtokenizer.tokenize(prompt_texts[0]) + sentence_ids
-        else:
-            head_id = mmtokenizer.tokenize(prompt_texts[0])
+        head_id = mmtokenizer.tokenize(prompt_texts[0])
         prompt_ids = (
             head_id + start_of_segment + mmtokenizer.tokenize(section_text) + [mmtokenizer.soa] + codectool.sep_ids
         )
@@ -358,7 +224,7 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
         output_seq = model.generate(
             input_ids=input_ids,
             max_new_tokens=max_new_tokens,
-            min_new_tokens=100,
+            min_new_tokens=min_new_tokens,
             do_sample=True,
             top_p=top_p,
             temperature=temperature,
@@ -391,7 +257,7 @@ if len(soa_idx) != len(eoa_idx):
 
 vocals = []
 instrumentals = []
-range_begin = 1 if args.use_audio_prompt or args.use_dual_tracks_prompt else 0
+range_begin = 0
 for i in range(range_begin, len(soa_idx)):
     codec_ids = ids[soa_idx[i] + 1 : eoa_idx[i]]
     if codec_ids[0] == 32016:
@@ -425,10 +291,10 @@ stage1_output_set.append(inst_save_path)
 # endregion
 
 # offload model
-if not args.disable_offload_model:
-    model.cpu()
-    del model
-    torch.cuda.empty_cache()
+
+model.cpu()
+del model
+torch.cuda.empty_cache()
 
 # region Stage Two - Load Model
 

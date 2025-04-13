@@ -14,7 +14,7 @@ generate-example:
         --genre_txt ../examples/genre.txt \
         --lyrics_txt ../examples/lyrics.txt \
         --run_n_segments 2 \
-        --stage2_batch_size 4 \
+        --stage2_batch_size 128 \
         --output_dir output \
         --max_new_tokens 1000 \
         --repetition_penalty 1.1
