@@ -25,6 +25,9 @@ from post_process_audio import replace_low_freq_with_energy_matched
 
 from models.soundstream_hubert_new import SoundStream  # noqa: F401
 
+
+# region Configuration
+
 parser = argparse.ArgumentParser()
 # Model Configuration:
 parser.add_argument(
@@ -148,6 +151,9 @@ parser.add_argument(
 )
 parser.add_argument("-r", "--rescale", action="store_true", help="Rescale output to avoid clipping.")
 
+# endregion
+
+# region Configuration validation
 
 args = parser.parse_args()
 if args.use_audio_prompt and not args.audio_prompt_path:
@@ -158,6 +164,11 @@ if args.use_dual_tracks_prompt and not args.vocal_track_prompt_path and not args
     raise FileNotFoundError(
         "Please offer dual tracks prompt filepath using '--vocal_track_prompt_path' and '--inst_decoder_path', when you enable '--use_dual_tracks_prompt'!"
     )
+
+# endregion
+
+# region Outputs paths and config
+
 stage1_model = args.stage1_model
 stage2_model = args.stage2_model
 cuda_idx = args.cuda_idx
@@ -166,6 +177,8 @@ stage1_output_dir = os.path.join(args.output_dir, "stage1")
 stage2_output_dir = stage1_output_dir.replace("stage1", "stage2")
 os.makedirs(stage1_output_dir, exist_ok=True)
 os.makedirs(stage2_output_dir, exist_ok=True)
+
+# endregion
 
 
 def seed_everything(seed=42):
@@ -180,11 +193,14 @@ def seed_everything(seed=42):
 seed_everything(args.seed)
 # load tokenizer and model
 device = torch.device(f"cuda:{cuda_idx}" if torch.cuda.is_available() else "cpu")
+
+# region Stage One - Load Model
+
 mmtokenizer = _MMSentencePieceTokenizer("./mm_tokenizer_v0.2_hf/tokenizer.model")
 model = AutoModelForCausalLM.from_pretrained(
     stage1_model,
     torch_dtype=torch.bfloat16,
-    # attn_implementation="flash_attention_2",  # To enable flashattn, you have to install flash-attn
+    attn_implementation="flash_attention_2",  # To enable flashattn, you have to install flash-attn
     # device_map="auto",
 )
 # to device, if gpu is available
@@ -202,6 +218,10 @@ parameter_dict = torch.load(args.resume_path, map_location="cpu", weights_only=F
 codec_model.load_state_dict(parameter_dict["codec_model"])
 codec_model.to(device)
 codec_model.eval()
+
+# endregion
+
+# region Stage One - Utils
 
 
 class BlockTokenRangeProcessor(LogitsProcessor):
@@ -241,6 +261,10 @@ def split_lyrics(lyrics):
     return structured_lyrics
 
 
+# endregion
+
+# region Stage One - Eval
+
 # Call the function and print the result
 stage1_output_set = []
 # Tips:
@@ -255,6 +279,8 @@ full_lyrics = "\n".join(lyrics)
 prompt_texts = [f"Generate music from the given lyrics segment by segment.\n[Genre] {genres}\n{full_lyrics}"]
 prompt_texts += lyrics
 
+print("|", full_lyrics)
+print("|", prompt_texts)
 
 random_id = uuid.uuid4()
 output_seq = None
@@ -271,6 +297,9 @@ run_n_segments = min(args.run_n_segments + 1, len(lyrics))
 for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference...")):
     section_text = p.replace("[start_of_segment]", "").replace("[end_of_segment]", "")
     guidance_scale = 1.5 if i <= 1 else 1.2
+
+    print("gen", i, p)
+
     if i == 0:
         continue
     if i == 1:
@@ -349,6 +378,10 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
     else:
         raw_output = output_seq
 
+# endregion
+
+# region Stage One - Postprocess
+
 # save raw output and check sanity
 ids = raw_output[0].cpu().numpy()
 soa_idx = np.where(ids == mmtokenizer.soa)[0].tolist()
@@ -372,14 +405,14 @@ vocals = np.concatenate(vocals, axis=1)
 instrumentals = np.concatenate(instrumentals, axis=1)
 vocal_save_path = os.path.join(
     stage1_output_dir,
-    f"{genres.replace(' ', '-')}_tp{top_p}_T{temperature}_rp{repetition_penalty}_maxtk{max_new_tokens}_{random_id}_vtrack".replace(
+    f"{random_id}:{genres.replace(' ', '-')}_tp{top_p}_T{temperature}_rp{repetition_penalty}_maxtk{max_new_tokens}_{random_id}_vtrack".replace(
         ".", "@"
     )
     + ".npy",
 )
 inst_save_path = os.path.join(
     stage1_output_dir,
-    f"{genres.replace(' ', '-')}_tp{top_p}_T{temperature}_rp{repetition_penalty}_maxtk{max_new_tokens}_{random_id}_itrack".replace(
+    f"{random_id}:{genres.replace(' ', '-')}_tp{top_p}_T{temperature}_rp{repetition_penalty}_maxtk{max_new_tokens}_{random_id}_itrack".replace(
         ".", "@"
     )
     + ".npy",
@@ -389,6 +422,7 @@ np.save(inst_save_path, instrumentals)
 stage1_output_set.append(vocal_save_path)
 stage1_output_set.append(inst_save_path)
 
+# endregion
 
 # offload model
 if not args.disable_offload_model:
@@ -396,11 +430,13 @@ if not args.disable_offload_model:
     del model
     torch.cuda.empty_cache()
 
+# region Stage Two - Load Model
+
 print("Stage 2 inference...")
 model_stage2 = AutoModelForCausalLM.from_pretrained(
     stage2_model,
     torch_dtype=torch.bfloat16,
-    # attn_implementation="flash_attention_2",
+    attn_implementation="flash_attention_2",
     # device_map="auto",
 )
 model_stage2.to(device)
@@ -408,6 +444,10 @@ model_stage2.eval()
 
 if torch.__version__ >= "2.0.0":
     model_stage2 = torch.compile(model_stage2)
+
+# endregion
+
+# region Stage Two - Single generate
 
 
 def stage2_generate(model, prompt, batch_size=16):
@@ -486,6 +526,11 @@ def stage2_generate(model, prompt, batch_size=16):
     return output
 
 
+# endregion
+
+# region Stage Two - Inference
+
+
 def stage2_inference(model, stage1_output_set, stage2_output_dir, batch_size=4):
     stage2_result = []
     for i in tqdm(range(len(stage1_output_set))):
@@ -544,9 +589,13 @@ def stage2_inference(model, stage1_output_set, stage2_output_dir, batch_size=4):
     return stage2_result
 
 
+# endregion
+
 stage2_result = stage2_inference(model_stage2, stage1_output_set, stage2_output_dir, batch_size=args.stage2_batch_size)
 print(stage2_result)
 print("Stage 2 DONE.\n")
+
+# region Postprocess - Save Audio
 
 
 # convert audio tokens to audio
@@ -559,6 +608,10 @@ def save_audio(wav: torch.Tensor, path, sample_rate: int, rescale: bool = False)
     wav = wav * min(limit / max_val, 1) if rescale else wav.clamp(-limit, limit)
     torchaudio.save(str(path), wav, sample_rate=sample_rate, encoding="PCM_S", bits_per_sample=16)
 
+
+# endregion
+
+# region Postprocess - Tracks Reconstruction
 
 # reconstruct tracks
 recons_output_dir = os.path.join(args.output_dir, "recons")
@@ -578,9 +631,15 @@ for npy in stage2_result:
     save_path = os.path.join(recons_output_dir, os.path.splitext(os.path.basename(npy))[0] + ".mp3")
     tracks.append(save_path)
     save_audio(decodec_rlt, save_path, 16000)
+
+# endregion
+
+# region Postprocess - Mixing
+
 # mix tracks
 for inst_path in tracks:
     try:
+        print(inst_path)
         if (inst_path.endswith(".wav") or inst_path.endswith(".mp3")) and "_itrack" in inst_path:
             # find pair
             vocal_path = inst_path.replace("_itrack", "_vtrack")
@@ -594,6 +653,10 @@ for inst_path in tracks:
             sf.write(recons_mix, mix_stem, sr)
     except Exception as e:
         print(e)
+
+# endregion
+
+# region Postprocess - Upsample
 
 # vocoder to upsample audios
 vocal_decoder, inst_decoder = build_codec_model(args.config_path, args.vocal_decoder_path, args.inst_decoder_path)
@@ -613,6 +676,11 @@ for npy in stage2_result:
         vocal_output = process_audio(
             npy, os.path.join(vocoder_stems_dir, "vtrack.mp3"), args.rescale, args, vocal_decoder, codec_model
         )
+
+# endregion
+
+# region Postprocess - Mixing
+
 # mix tracks
 try:
     mix_output = instrumental_output + vocal_output
@@ -623,6 +691,10 @@ except RuntimeError as e:
     print(e)
     print(f"mix {vocoder_mix} failed! inst: {instrumental_output.shape}, vocal: {vocal_output.shape}")
 
+# endregion
+
+# region Postprocess - Last
+
 # Post process
 replace_low_freq_with_energy_matched(
     a_file=recons_mix,  # 16kHz
@@ -630,3 +702,5 @@ replace_low_freq_with_energy_matched(
     c_file=os.path.join(args.output_dir, os.path.basename(recons_mix)),
     cutoff_freq=5500.0,
 )
+
+# endregion Postprocess - Last
