@@ -13,12 +13,13 @@ import torch
 import torchaudio
 import soundfile as sf
 from einops import rearrange
-from transformers import AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList  # noqa: F401
+from transformers import BatchEncoding, AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList  # noqa: F401
 from omegaconf import OmegaConf
 from codecmanipulator import CodecManipulator
 from mmtokenizer import _MMSentencePieceTokenizer
 from vocoder import build_codec_model, process_audio
 from post_process_audio import replace_low_freq_with_energy_matched
+from nnsight import LanguageModel
 
 from models.soundstream_hubert_new import SoundStream  # noqa: F401
 
@@ -105,11 +106,18 @@ parser.add_argument(
 )
 parser.add_argument("-r", "--rescale", action="store_true", help="Rescale output to avoid clipping.")
 
+# Ablation
+parser.add_argument("--ablate", action="store_true", help="Run ablation")
+parser.add_argument("--ablation-layer", type=int, default=0, help="Ablation layer")
+
 # endregion
 
 # region Configuration validation
 
 args = parser.parse_args()
+
+if not args.ablate and args.ablation_layer:
+    raise RuntimeError("Missing ablation layer in ablate mode")
 
 # endregion
 
@@ -139,12 +147,13 @@ model = AutoModelForCausalLM.from_pretrained(
     attn_implementation="flash_attention_2",  # To enable flashattn, you have to install flash-attn
     # device_map="auto",
 )
+model = LanguageModel(model, input_names=["input_ids"])
 # to device, if gpu is available
 model.to(device)
 model.eval()
 
-if torch.__version__ >= "2.0.0":
-    model = torch.compile(model)
+# if torch.__version__ >= "2.0.0":
+#     model = torch.compile(model)
 
 codectool = CodecManipulator("xcodec", 0, 1)
 codectool_stage2 = CodecManipulator("xcodec", 0, 8)
@@ -187,6 +196,9 @@ start_of_segment = mmtokenizer.tokenize("[start_of_segment]")
 end_of_segment = mmtokenizer.tokenize("[end_of_segment]")
 raw_output = None
 
+if args.ablate:
+    layer = model.model.layers[args.ablation_layer]
+
 min_new_tokens = max_new_tokens
 # Format text prompt
 run_n_segments = min(args.run_n_segments + 1, len(lyrics))
@@ -222,8 +234,14 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
         )
         input_ids = input_ids[:, -(max_context):]
     with torch.no_grad():
-        output_seq = model.generate(
-            input_ids=input_ids,
+        print(model)
+
+        attention_mask = (input_ids != 0).long()
+        inputs = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
+
+        with model.generate(
+            inputs=inputs,
+            # input_ids=input_ids,
             max_new_tokens=max_new_tokens,
             min_new_tokens=min_new_tokens,
             do_sample=True,
@@ -236,8 +254,14 @@ for i, p in enumerate(tqdm(prompt_texts[:run_n_segments], desc="Stage1 inference
                 [BlockTokenRangeProcessor(0, 32002), BlockTokenRangeProcessor(32016, 32016)]
             ),
             guidance_scale=guidance_scale,
-        )
-        print("SHAPE", output_seq.shape)
+        ) as generator:
+            output_seq = model.generator.output.save()
+            for _ in range(max_new_tokens):
+                if args.ablate:
+                    layer.output[0][:] = layer.input[:]
+                model.next()
+
+        print(output_seq.shape)
         if output_seq[0][-1].item() != mmtokenizer.eoa:
             tensor_eoa = torch.as_tensor([[mmtokenizer.eoa]]).to(model.device)
             output_seq = torch.cat((output_seq, tensor_eoa), dim=1)
