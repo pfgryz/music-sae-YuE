@@ -76,6 +76,7 @@ parser.add_argument(
 parser.add_argument(
     "--output_dir", type=str, default="./output", help="The directory where generated outputs will be saved."
 )
+parser.add_argument("--output_file", type=str, default="", help="Name of output file.")
 parser.add_argument("--cuda_idx", type=int, default=0)
 parser.add_argument("--seed", type=int, default=42, help="An integer value to reproduce generation.")
 # Config for xcodec and upsampler
@@ -565,7 +566,9 @@ except RuntimeError as e:
 replace_low_freq_with_energy_matched(
     a_file=recons_mix,  # 16kHz
     b_file=vocoder_mix,  # 48kHz
-    c_file=os.path.join(args.output_dir, os.path.basename(recons_mix)),
+    c_file=os.path.join(
+        args.output_dir, os.path.basename(recons_mix) if not args.output_file else f"{args.output_file}.mp3"
+    ),
     cutoff_freq=5500.0,
 )
 
