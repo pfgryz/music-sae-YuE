@@ -164,6 +164,8 @@ cython_debug/
 output
 inference/xcodec_mini_infer
 inference/run_infer.sh
-
+inference/ablate
+examples/genres
+dependencies
 
 .ruff_cache

@@ -66,26 +66,17 @@ ablate-example:
         --ablate \
         --ablation-layer 1
 
-ablate-few:
+ablate-ref:
     #!/bin/bash
     cd inference
 
-    paths=(
-        g0
-        g1
-        g2
-        g3
-        g4
-        g5
-    )
-
-    for path in "${paths[@]}"
+    for path in {6..105}
     do
         uv run infer.py \
             --cuda_idx 0 \
             --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
             --stage2_model m-a-p/YuE-s2-1B-general \
-            --genre_txt ../examples/$path.txt \
+            --genre_txt ../examples/genres/g$path.txt \
             --lyrics_txt ../examples/lyrics.txt \
             --run_n_segments 2 \
             --stage2_batch_size 128 \
@@ -95,15 +86,19 @@ ablate-few:
             --repetition_penalty 1.1
     done
 
-    for layer in {0..31}
+ablate-few:
+    #!/bin/bash
+    cd inference
+
+    for path in {6..105}
     do
-        for path in "${paths[@]}"
+        for layer in {0..31}
         do
             uv run infer_ablate.py \
                 --cuda_idx 0 \
                 --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
                 --stage2_model m-a-p/YuE-s2-1B-general \
-                --genre_txt ../examples/$path.txt \
+                --genre_txt ../examples/genres/g$path.txt \
                 --lyrics_txt ../examples/lyrics.txt \
                 --run_n_segments 2 \
                 --stage2_batch_size 128 \
@@ -114,4 +109,19 @@ ablate-few:
                 --ablate \
                 --ablation-layer $layer
         done
+    done
+
+ablation-fad generations_dir score_path:
+    #!/bin/sh
+    cd dependencies/fadtk
+    for item in $(seq 0 31); do 
+        uv run fadtk --inf clap-laion-audio fma_pop {{ generations_dir }}/layer/$item {{ score_path }};
+    done
+    uv run fadtk --inf clap-laion-audio fma_pop {{ generations_dir }}/pure {{ score_path }};
+
+ablation-relative-fad generations_dir score_path:
+    #!/bin/sh
+    cd dependencies/fadtk
+    for item in $(seq 0 31); do 
+        uv run fadtk --inf clap-laion-audio {{ generations_dir }}/pure {{ generations_dir }}/layer/$item {{ score_path }};
     done
