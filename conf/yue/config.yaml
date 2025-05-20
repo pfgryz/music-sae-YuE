@@ -1,0 +1,7 @@
+datasets: []
+device: cuda
+model_name: "7B-anneal-en-cot"
+layers: 
+  - 13
+max_gen_num_tokens: 255
+seed: 42

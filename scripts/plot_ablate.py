@@ -31,7 +31,9 @@ def plot_ablate(title, path, out_path):
     fig.savefig(out_path, dpi=300)
 
 
-plot_ablate(r"$FAD_{clap}$ YuE fma_pop", "output/fad.csv", "output/fad.png")
-plot_ablate(r"$FAD_{\infty}$ YuE fma_pop", "output/fad.csv", "output/fad_inf.png")
-plot_ablate(r"$FAD_{clap}$ YuE pure relative", "output/fad-relative.csv", "output/fad_relative.png")
-plot_ablate(r"$FAD_{\infty}$ YuE pure relative", "output/fad-relative.csv", "output/fad_relative_inf.png")
+OUTPUT_DIR = "inference/fadtk"
+
+plot_ablate(r"$FAD_{clap}$ YuE fma_pop", f"{OUTPUT_DIR}/fad.csv", f"{OUTPUT_DIR}/fad.png")
+plot_ablate(r"$FAD_{\infty}$ YuE fma_pop", f"{OUTPUT_DIR}/fad.csv", f"{OUTPUT_DIR}/fad_inf.png")
+plot_ablate(r"$FAD_{clap}$ YuE pure relative", f"{OUTPUT_DIR}/fad-relative.csv", f"{OUTPUT_DIR}/fad_relative.png")
+plot_ablate(r"$FAD_{\infty}$ YuE pure relative", f"{OUTPUT_DIR}/fad-relative.csv", f"{OUTPUT_DIR}/fad_relative_inf.png")

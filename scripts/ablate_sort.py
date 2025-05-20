@@ -13,6 +13,9 @@ for filename in os.listdir(directory):
     if not os.path.isfile(filepath):
         continue
 
+    if "mp3" not in filename:
+        continue
+
     segments = filename.replace(".mp3", "").split("-")
     _, category, *other = segments
 

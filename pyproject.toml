@@ -10,6 +10,7 @@ dependencies = [
     "descript-audiotools>=0.7.2",
     "einops>=0.8.1",
     "flash-attn==2.7.3",
+    "hydra-core>=1.3.2",
     "matplotlib>=3.9.4",
     "nnsight>=0.4.5",
     "numpy>=2.0.2",

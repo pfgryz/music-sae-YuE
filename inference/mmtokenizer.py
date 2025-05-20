@@ -54,7 +54,7 @@ class AbstractTokenizer(ABC):
         raise NotImplementedError("MASK is not provided for {} tokenizer".format(self.name))
 
 
-class _SentencePieceTokenizer(AbstractTokenizer):
+class SentencePieceTokenizer(AbstractTokenizer):
     """SentencePieceTokenizer-Megatron wrapper"""
 
     def __init__(self, model_file, vocab_extra_ids=0):
@@ -230,7 +230,7 @@ class _SentencePieceTokenizer(AbstractTokenizer):
         return [self.vocab[k] for k in self._t5_tokens]
 
 
-class _MMSentencePieceTokenizer(_SentencePieceTokenizer):
+class MMSentencePieceTokenizer(SentencePieceTokenizer):
     """SentencePieceTokenizer-Megatron wrapper"""
 
     def __init__(self, model_file, vocab_extra_ids=0):
