@@ -4,21 +4,16 @@ import sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xcodec_mini_infer"))
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "xcodec_mini_infer", "descriptaudiocodec"))
 import argparse
-import numpy as np
 import torch
 import torchaudio
 from torchaudio.transforms import Resample
 from transformers import BatchEncoding, AutoTokenizer, AutoModelForCausalLM, LogitsProcessor, LogitsProcessorList  # noqa: F401
-from omegaconf import OmegaConf
-from codecmanipulator import CodecManipulator
-from mmtokenizer import MMSentencePieceTokenizer
 from nnsight import LanguageModel
-from dataclasses import dataclass
 from models.soundstream_hubert_new import SoundStream  # noqa: F401
-
+from yue import YuEProcessor
 
 from common import initialize_seed
-from stage_one_utils import split_lyrics, BlockTokenRangeProcessor
+from common import split_lyrics, BlockTokenRangeProcessor
 
 # region Configuration
 
@@ -134,78 +129,6 @@ def load_audio_mono(filepath, sampling_rate=16000):
 initialize_seed(args.seed)
 cuda_idx = args.cuda_idx
 device = torch.device(f"cuda:{cuda_idx}" if torch.cuda.is_available() else "cpu")
-# endregion
-
-
-# region Processor impl
-@dataclass
-class YuEProcessConfig:
-    tokenizer_model_path: str = "./mm_tokenizer_v0.2_hf/tokenizer.model"
-    codec_model_config_path: str = "./xcodec_mini_infer/final_ckpt/config.yaml"
-    codec_model_resume_path: str = "./xcodec_mini_infer/final_ckpt/ckpt_00360000.pth"
-
-
-class YuEProcessor:
-    def __init__(self, device, config: YuEProcessConfig = None):
-        if config is None:
-            config = YuEProcessConfig()
-
-        codec_model_config = OmegaConf.load(config.codec_model_config_path)
-        codec_parameter_dict = torch.load(config.codec_model_resume_path, map_location="cpu", weights_only=False)
-
-        self._device = device
-        self._tokenizer = MMSentencePieceTokenizer(config.tokenizer_model_path)
-        self._codectool = CodecManipulator("xcodec", 0, 1)
-
-        self._codec_model = SoundStream(**codec_model_config.generator.config).to(device)
-        self._codec_model.load_state_dict(codec_parameter_dict["codec_model"])
-        self._codec_model.to(device)
-        self._codec_model.eval()
-
-        self._sos = self._tokenizer.tokenize("[start_of_segment]")
-
-    @property
-    def eoa(self):
-        return self._tokenizer.eoa
-
-    def _encode_audio(self, audio, target_bw=0.5):
-        if len(audio.shape) < 3:
-            audio.unsqueeze_(0)
-
-        with torch.no_grad():
-            raw_codes = self._codec_model.encode(audio.to(device), target_bw=target_bw)
-
-        raw_codes = raw_codes.transpose(0, 1)
-        raw_codes = raw_codes.cpu().numpy().astype(np.int16)
-        return raw_codes
-
-    def process(self, genres: str, lyrics: list[str], audio):
-        full_lyrics = "\n".join(lyrics)
-        segment = lyrics[0]
-        prompt = f"Generate music from the given lyrics segment by segment.\n[Genre] {genres}\n{full_lyrics}"
-
-        raw_codes = self._encode_audio(audio, target_bw=0.5)
-        code_ids = self._codectool.npy2ids(raw_codes[0])
-        audio_prompt = [self._tokenizer.soa] + self._codectool.sep_ids + code_ids + [self._tokenizer.eoa]
-
-        sentence_ids = (
-            self._tokenizer.tokenize("[start_of_reference]")
-            + audio_prompt
-            + self._tokenizer.tokenize("[end_of_reference]")
-        )
-        head_id = self._tokenizer.tokenize(prompt) + sentence_ids
-
-        prompt_ids = (
-            head_id + self._sos + self._tokenizer.tokenize(segment) + [self._tokenizer.soa] + self._codectool.sep_ids
-        )
-        input_ids = torch.as_tensor(prompt_ids).unsqueeze(0).to(device)
-
-        attention_mask = (input_ids != 0).long()
-        inputs = BatchEncoding({"input_ids": input_ids, "attention_mask": attention_mask})
-
-        return inputs
-
-
 # endregion
 
 # region CONFIG

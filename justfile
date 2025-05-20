@@ -149,3 +149,9 @@ trace-test:
                 --repetition_penalty 1.1 \
                 --ablate \
                 --ablation-layer 13
+
+trace2-test:
+    #!/bin/bash
+    cd inference
+
+    uv run infer_trace_2.py
