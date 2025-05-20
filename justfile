@@ -126,32 +126,7 @@ ablation-relative-fad generations_dir score_path:
         uv run fadtk --inf clap-laion-audio {{ generations_dir }}/pure {{ generations_dir }}/layer/$item {{ score_path }};
     done
 
-test-activation:
-    #!/bin/sh
-    cd inference
-    uv run infer_stage1.py
-
 trace-test:
     #!/bin/bash
     cd inference
-
-    uv run infer_trace.py \
-                --cuda_idx 1 \
-                --stage1_model m-a-p/YuE-s1-7B-anneal-en-cot \
-                --stage2_model m-a-p/YuE-s2-1B-general \
-                --genre_txt ../examples/genres/g0.txt \
-                --lyrics_txt ../examples/lyrics.txt \
-                --run_n_segments 2 \
-                --stage2_batch_size 128 \
-                --output_dir other \
-                --output_file trace \
-                --max_new_tokens 300 \
-                --repetition_penalty 1.1 \
-                --ablate \
-                --ablation-layer 13
-
-trace2-test:
-    #!/bin/bash
-    cd inference
-
     uv run infer_trace_2.py
